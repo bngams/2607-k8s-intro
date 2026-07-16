@@ -1,0 +1,29 @@
+# LimitRange - squelette a completer
+# Doc : https://kubernetes.io/docs/concepts/policy/limit-range/
+#
+# Le LimitRange agit PAR conteneur (pas en agrege) :
+#  - injecte des requests/limits par defaut si le pod n'en declare pas
+#  - refuse les pods qui sortent des bornes min/max
+# Indispensable des qu'un ResourceQuota impose requests/limits :
+# sans lui, tout pod sans requests/limits est REFUSE.
+
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: whoami-limits
+  namespace: whoami
+spec:
+  limits:
+  - type: Container
+    default:                 # limits injectees si le conteneur n'en declare pas
+      cpu: "____________"           # ex: 250m
+      memory: "____________"        # ex: 128Mi
+    defaultRequest:          # requests injectees si le conteneur n'en declare pas
+      cpu: "____________"           # ex: 100m
+      memory: "____________"        # ex: 64Mi
+    max:                     # plafond par conteneur (refus au-dela)
+      cpu: "____________"           # ex: "1"
+      memory: "____________"        # ex: 512Mi
+    min:                     # plancher par conteneur (refus en-deca)
+      cpu: "____________"           # ex: 50m
+      memory: "____________"        # ex: 32Mi

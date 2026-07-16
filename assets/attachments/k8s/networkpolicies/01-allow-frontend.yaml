@@ -1,0 +1,30 @@
+# NetworkPolicy "allow-frontend" - squelette a completer
+# Doc : https://kubernetes.io/docs/concepts/services-networking/network-policies/
+#
+# Rouvre selectivement le trafic coupe par default-deny :
+# SEUL le namespace labellise role=frontend peut joindre whoami sur le port 80.
+#
+# Rappel selecteurs :
+#  - namespaceSelector : filtre les NAMESPACES source (par leurs labels)
+#  - podSelector       : filtre les PODS source
+#  - les deux ensemble  : pods correspondants DANS les namespaces correspondants
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend
+  namespace: whoami
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ____________   # pods CIBLES de la policy (ex: whoami)
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - ____________:                   # on filtre la SOURCE par namespace : quel selecteur ?
+        matchLabels:
+          role: ____________          # label du namespace autorise (ex: frontend)
+    ports:
+    - protocol: TCP
+      port: ____________              # port autorise (ex: 80)

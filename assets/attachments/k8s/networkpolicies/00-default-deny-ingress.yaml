@@ -1,0 +1,18 @@
+# NetworkPolicy "default-deny" - squelette a completer
+# Doc : https://kubernetes.io/docs/concepts/services-networking/network-policies/
+#
+# Point de depart de toute strategie zero-trust : on coupe TOUT le trafic
+# entrant vers les pods du namespace, puis on rouvre selectivement (fichier 01).
+#
+# ATTENTION : sans CNI compatible (Calico, Cilium...), cette policy est
+# ACCEPTEE par l'API mais IGNOREE. Le CNI par defaut de minikube ne l'applique pas.
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: whoami
+spec:
+  podSelector: {}            # {} = TOUS les pods du namespace
+  policyTypes:
+  - ____________             # quel sens de trafic on ferme ? (Ingress / Egress)

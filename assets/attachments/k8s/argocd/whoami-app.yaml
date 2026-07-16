@@ -1,0 +1,27 @@
+# Application ArgoCD - squelette a completer
+# Doc : https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#applications
+#
+# Une "Application" est une CRD ArgoCD : elle lie une SOURCE (repo git + chemin)
+# a une DESTINATION (cluster + namespace) et definit la politique de synchro.
+# Remplacez <VOTRE-REPO> par l'URL de VOTRE depot (GitHub/GitLab/Gitea) cree a l'etape 5.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: whoami-gitops
+  namespace: argocd            # l'Application vit dans le ns d'ArgoCD
+spec:
+  project: default
+  source:
+    repoURL: ____________      # URL de VOTRE depot (ex: https://github.com/moi/whoami-k8s.git)
+    targetRevision: ____________   # branche a suivre (ex: main)
+    path: ____________         # dossier des manifests dans le repo (ex: 1.whoami)
+  destination:
+    server: https://kubernetes.default.svc   # cluster local
+    namespace: ____________    # ns cible ou deployer (ex: whoami)
+  syncPolicy:
+    automated:
+      prune: ____________      # supprimer du cluster ce qui disparait de git ? (true/false)
+      selfHeal: ____________   # revert auto des changements hors-git ? (true/false)
+    syncOptions:
+    - CreateNamespace=true     # cree le ns cible s'il n'existe pas

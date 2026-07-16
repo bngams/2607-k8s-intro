@@ -1,0 +1,44 @@
+# Deux namespaces "clients" pour tester la NetworkPolicy (fourni, rien a completer)
+#  - frontend : labellise role=frontend  => sera AUTORISE par 01-allow-frontend
+#  - other    : labellise role=other      => sera BLOQUE
+# Chaque ns contient un pod curl qui servira a tester la connectivite vers whoami.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: frontend
+  labels:
+    role: frontend
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: other
+  labels:
+    role: other
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: client
+  namespace: frontend
+  labels:
+    app: client
+spec:
+  containers:
+  - name: c
+    image: curlimages/curl
+    command: ["sleep", "3600"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: client
+  namespace: other
+  labels:
+    app: client
+spec:
+  containers:
+  - name: c
+    image: curlimages/curl
+    command: ["sleep", "3600"]

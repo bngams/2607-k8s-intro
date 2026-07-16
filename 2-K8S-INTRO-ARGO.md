@@ -1,0 +1,426 @@
+# 03 — Introduction à ArgoCD : GitOps et déploiement continu
+
+> **Format — cas à part, guidé.** Ce TP est plus « suivez le fil » que les autres (installation d'un outil + prise en main d'une UI). Vous complétez tout de même le manifest `Application` (`# TODO`), et vous poussez vos **propres** manifests dans **votre propre dépôt git**.
+
+Prérequis : vous savez déployer des ressources Kubernetes à la main avec `kubectl apply`. On introduit maintenant une approche différente : le **GitOps** avec ArgoCD.
+
+> **Tutoriel de référence :** ce TP s'inspire du tutoriel RedHat — [ArgoCD Tutorial: Getting Started](https://redhat-scholars.github.io/argocd-tutorial/argocd-tutorial/02-getting_started.html).
+
+> **Prérequis cluster :** minikube démarré, addon ingress actif
+
+---
+
+## ✨ Objectifs
+
+- Comprendre le **GitOps** : git comme unique source de vérité
+- Installer ArgoCD et accéder à son **UI**
+- Créer une **Application** ArgoCD pointant vers **votre propre dépôt git**
+- Observer une **synchronisation** automatique et un **configuration drift**
+- Activer le **self-healing** (revert automatique des changements hors-git)
+
+---
+
+# PHASE 0 — GitOps : le concept
+
+## Le problème du `kubectl apply` manuel
+
+Jusqu'ici, le workflow ressemble à ceci :
+
+```
+Modifier un manifest YAML  ->  kubectl apply  ->  cluster mis à jour
+```
+
+Ça marche, mais en équipe ça montre ses limites (même avec un pipeline CI/CD) :
+
+- **Qui a appliqué quoi ?** Aucune trace si on ne commit pas systématiquement les fichiers de configs finaux (la CI/CD génère ou personnalise peut être des fichiers de configs à la volée).
+- **Le cluster est-il synchronisé avec git ?** Quelqu'un a peut-être fait un `kubectl` en direct.
+- **Comment revenir en arrière ?** `kubectl rollout undo`, même si le YAML dans git n'a pas bougé.
+- **Environnements multiples ?** Staging, prod — appliquer à la main sur chacun = source d'erreurs.
+
+## La réponse : GitOps
+
+Le principe du **GitOps** : **git est l'unique source de vérité**.
+
+- On ne fait plus (idéalement) de `kubectl apply` à la main.
+- On commit les manifests dans git.
+- Un outil (ArgoCD) surveille le repo et **réconcilie automatiquement** le cluster avec l'état défini dans git.
+
+```mermaid
+sequenceDiagram
+    participant Dev as Développeur
+    participant Git as Dépôt Git
+    participant Argo as ArgoCD
+    participant K8S as Cluster Kubernetes
+
+    Dev->>Git: git push (manifest modifié)
+    Argo->>Git: surveille (polling ~3 min)
+    Git-->>Argo: nouveau commit détecté
+    Argo->>K8S: kubectl apply (automatique)
+    K8S-->>Argo: état réconcilié
+    Note over Argo,K8S: Si quelqu'un fait un kubectl manuel...
+    K8S-->>Argo: drift détecté
+    Argo->>K8S: revert automatique (si selfHeal activé)
+```
+
+## ArgoCD en un mot
+
+**ArgoCD** est un contrôleur Kubernetes qui implémente le GitOps :
+
+- il tourne **dans** le cluster (comme des pods) ;
+- il surveille un ou plusieurs dépôts git ;
+- il compare l'état git avec l'état réel (**diff**) ;
+- il applique les changements (**sync**), automatiquement ou sur demande ;
+- il expose une **UI web** pour tout piloter.
+
+---
+
+# PHASE 1 — Installer ArgoCD
+
+## Etape 1 — Vérifier les prérequis
+
+```bash
+minikube status
+minikube addons list | grep ingress
+# ingress   : enabled ✅
+```
+
+Si l'ingress n'est pas actif :
+
+```bash
+minikube addons enable ingress
+kubectl get pods -n ingress-nginx     # attendre Running
+```
+
+---
+
+## Etape 2 — Installer ArgoCD
+
+ArgoCD se déploie dans son propre namespace via un manifest officiel.
+
+```bash
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+```
+
+Cette commande crée une vingtaine de ressources (Deployments, Services, ConfigMaps, RBAC, CRDs...).
+
+Attendre que le serveur soit prêt (2-3 min) :
+
+```bash
+kubectl rollout status deploy/argocd-server -n argocd
+watch kubectl get pods -n argocd
+```
+
+On doit voir ~7 pods `Running` :
+
+```
+argocd-application-controller-0            1/1   Running
+argocd-applicationset-controller-xxx       1/1   Running
+argocd-dex-server-xxx                      1/1   Running
+argocd-notifications-controller-xxx        1/1   Running
+argocd-redis-xxx                           1/1   Running
+argocd-repo-server-xxx                     1/1   Running
+argocd-server-xxx                          1/1   Running
+```
+
+---
+
+## Etape 3 — Exposer l'UI ArgoCD
+
+Le service `argocd-server` est en `ClusterIP` par défaut. Deux options pour l'atteindre.
+
+**Option A — Ingress sur `argocd.local`** (cohérent avec les labs précédents).
+
+ArgoCD sert son UI en HTTPS. Pour simplifier en local, on désactive TLS côté ArgoCD (l'Ingress gère le HTTP) :
+
+```bash
+kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge \
+  -p '{"data": {"server.insecure": "true"}}'
+kubectl rollout restart deployment argocd-server -n argocd
+kubectl rollout status deployment argocd-server -n argocd
+```
+
+Créer `argocd-ingress.yaml` :
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-ingress
+  namespace: argocd
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+spec:
+  rules:
+  - host: argocd.local
+    http:
+      paths:
+      - pathType: Prefix
+        path: "/"
+        backend:
+          service:
+            name: argocd-server
+            port:
+              number: 80
+```
+
+```bash
+kubectl apply -f argocd-ingress.yaml
+echo "$(minikube ip)  argocd.local" | sudo tee -a /etc/hosts
+# ou avec minikube tunnel actif :  echo "127.0.0.1  argocd.local" | sudo tee -a /etc/hosts
+```
+
+**Option B — port-forward** (plus rapide, sans Ingress ni /etc/hosts) :
+
+```bash
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+# UI dispo sur https://localhost:8080 (accepter le certificat auto-signé)
+```
+
+---
+
+## Etape 4 — Premier login
+
+ArgoCD génère un mot de passe admin aléatoire à l'installation, stocké dans un Secret :
+
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath="{.data.password}" | base64 -d ; echo
+```
+
+Se connecter à l'UI ([http://argocd.local](http://argocd.local) ou [https://localhost:8080](https://localhost:8080)) :
+
+- **Username** : `admin`
+- **Password** : le mot de passe ci-dessus
+
+> **Changez le mot de passe** après connexion : **User Info > Update Password**.
+
+### (Optionnel) CLI ArgoCD
+
+```bash
+# macOS
+brew install argocd
+# Linux
+curl -sSL -o /usr/local/bin/argocd \
+  https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64 && chmod +x /usr/local/bin/argocd
+
+ARGO_PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+argocd login argocd.local --username admin --password "$ARGO_PASS" --insecure
+```
+
+---
+
+# PHASE 2 — (Échauffement) Déployer une app publique
+
+> **Pourquoi commencer par un repo public ?** Pointer ArgoCD vers **votre** repo demande de le créer et parfois de gérer des credentials. Pour vous concentrer d'abord sur *le mécanisme ArgoCD*, on déploie une app de démo publique — **prête à l'emploi, sans configuration d'accès**. On branchera votre propre repo en PHASE 3.
+
+On utilise l'app **bgd** (Blue Green Demo, des bulles colorées) du dépôt public RedHat.
+
+### Etape 5 — Créer l'Application (via l'UI)
+
+Dans ArgoCD : **+ New App**, puis :
+
+| Champ | Valeur |
+|---|---|
+| **Application Name** | `bgd-app` |
+| **Project** | `default` |
+| **Sync Policy** | `Automatic` |
+| **Repository URL** | `https://github.com/redhat-developer-demos/openshift-gitops-examples` |
+| **Revision** | `minikube` |
+| **Path** | `apps/bgd/overlays/bgd` |
+| **Cluster URL** | `https://kubernetes.default.svc` |
+| **Namespace** | `bgd` |
+| **Auto-create namespace** | ✅ |
+
+**Create**. L'app passe **Syncing** → **Healthy / Synced**, et ArgoCD affiche le graphe des ressources créées.
+
+```bash
+kubectl get all -n bgd
+kubectl port-forward svc/bgd 8080:8080 -n bgd
+# http://localhost:8080 -> bulles BLEUES
+```
+
+---
+
+# PHASE 3 — GitOps avec VOTRE dépôt
+
+C'est le cœur du TP : faire piloter par ArgoCD **les manifests whoami** des labs 01/02, depuis **votre propre dépôt git**.
+
+> **Pas de serveur GitLab d'entreprise ici** : chacun crée **son propre dépôt** — GitHub, GitLab.com, ou un Gitea/GitLab auto-hébergé. Un **repo public** évite toute config de credentials (recommandé pour ce TP). Pour un repo privé, voir le Bonus en fin de page.
+
+## Etape 6 — Créer et pousser votre dépôt
+
+1. Créez un dépôt **public** vide chez votre hébergeur (ex. GitHub : `whoami-k8s`).
+2. Depuis votre dossier de travail, poussez vos manifests whoami :
+
+```bash
+cd 1.whoami          # ou 01-whoami selon votre nommage
+git init
+git add .
+git commit -m "manifests whoami"
+git branch -M main
+git remote add origin https://github.com/<vous>/whoami-k8s.git
+git push -u origin main
+```
+
+> ⚠️ **Cohérence des manifests.** Assurez-vous que vos YAML poussés créent bien le namespace `whoami` **ou** que l'Application le crée (`CreateNamespace=true`, réglé ci-dessous). Retirez du repo les fichiers qui ne doivent pas être synchronisés par ArgoCD (ex. le `whoami.hpa.yaml` si vous voulez le gérer à part).
+
+## Etape 7 — Créer l'Application pointant sur votre repo
+
+### 🚧 À compléter
+
+Récupérez [assets/attachments/k8s/argocd/whoami-app.yaml](assets/attachments/k8s/argocd/whoami-app.yaml) et complétez les `# TODO` avec **l'URL de votre dépôt** :
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: whoami-gitops
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: ____________          # TODO : URL de VOTRE dépôt (…/whoami-k8s.git)
+    targetRevision: ____________   # TODO : branche (main)
+    path: ____________             # TODO : dossier des manifests dans le repo (. ou 1.whoami)
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ____________        # TODO : ns cible (whoami)
+  syncPolicy:
+    automated:
+      prune: ____________          # TODO : true (supprime du cluster ce qui disparaît de git)
+      selfHeal: ____________       # TODO : false pour l'instant (on l'activera à l'étape 10)
+    syncOptions:
+    - CreateNamespace=true
+```
+
+> **`path`** : si vous avez `git init` **dans** `1.whoami/`, les manifests sont à la racine du repo → `path: .`. Si vous avez poussé le dossier parent, `path: 1.whoami`.
+
+> 📖 [ArgoCD — Application (declarative setup)](https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#applications)
+
+Appliquez :
+
+```bash
+kubectl apply -f whoami-app.yaml
+```
+
+> **`kind: Application`** est une **CRD** ArgoCD (pas du Kubernetes natif) — enregistrée à l'installation d'ArgoCD.
+
+## Etape 8 — Observer la synchro
+
+Dans l'UI, `whoami-gitops` apparaît, se synchronise, passe **Healthy / Synced**. Côté cluster :
+
+```bash
+kubectl get all -n whoami
+```
+
+**Le test GitOps** : modifiez `replicas` dans votre `whoami.deployment.yaml`, commitez, poussez :
+
+```bash
+# éditer replicas: 3, puis :
+git commit -am "scale whoami à 3 replicas"
+git push
+```
+
+Dans l'UI, forcez un refresh (ou attendez le polling ~3 min) → ArgoCD détecte le commit et applique. `kubectl get pods -n whoami` montre 3 pods, **sans aucun `kubectl apply` manuel**.
+
+---
+
+## Etape 9 — Simuler un configuration drift
+
+Le **drift** : l'état réel du cluster diverge de git (quelqu'un a fait un `kubectl` en direct).
+
+```bash
+# Modifier les replicas directement sur le cluster (hors git)
+kubectl scale deployment whoami --replicas=1 -n whoami
+```
+
+Dans l'UI, l'app passe **OutOfSync** ⚠️ — ArgoCD a détecté la divergence. Cliquez sur l'app pour voir le **diff** (git dit 3, cluster dit 1).
+
+Resynchroniser manuellement :
+
+```bash
+argocd app sync whoami-gitops     # ou bouton "Sync" dans l'UI
+```
+
+Le cluster repasse à 3 replicas — ArgoCD a réappliqué l'état de git.
+
+---
+
+## Etape 10 — Activer le Self-Healing
+
+Plutôt que de resync à la main, ArgoCD peut **revert automatiquement** tout changement hors-git.
+
+```bash
+kubectl patch application/whoami-gitops -n argocd --type=merge \
+  -p='{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'
+```
+
+Reproduire le drift :
+
+```bash
+kubectl scale deployment whoami --replicas=1 -n whoami
+```
+
+En quelques secondes, ArgoCD détecte et re-sync **tout seul** → retour à 3 replicas sans intervention.
+
+> ⚖️ **Self-heal en production : puissant mais à manier avec soin.** Tout ce que vous voulez changer doit passer par git — sinon ArgoCD écrasera un correctif d'urgence appliqué à la main. C'est le prix (assumé) du « git = source de vérité ».
+
+---
+
+## Récap
+
+```mermaid
+graph TD
+  Git["Votre dépôt Git<br/>(source de vérité)"] -->|surveille| Argo["ArgoCD<br/>(dans le cluster)"]
+  Argo -->|sync| Whoami["App whoami<br/>(namespace whoami)"]
+  Dev["Vous"] -->|git push| Git
+  Argo -->|UI / API| Ops["Ops"]
+  style Git fill:#f59e0b,color:#000
+  style Argo fill:#ef4444,color:#fff
+```
+
+| Concept | Description |
+|---|---|
+| **Application ArgoCD** | Lie un `path` git à un namespace Kubernetes |
+| **Sync** | Applique l'état git sur le cluster |
+| **OutOfSync** | Le cluster a divergé de git |
+| **Self-heal** | Revert automatique de tout changement hors-git |
+| **Prune** | Supprime du cluster ce qui n'existe plus dans git |
+
+---
+
+## Bonus — Repo privé (credentials)
+
+Pour un dépôt **privé**, ArgoCD a besoin d'un accès en lecture.
+
+**GitHub** — créer un *Personal Access Token* (scope `repo` en lecture) puis :
+
+```bash
+argocd repo add https://github.com/<vous>/whoami-k8s.git \
+  --username <vous> --password <TOKEN>
+```
+
+**GitLab (self-hosted / .com)** — *Settings > Repository > Deploy tokens*, scope `read_repository` :
+
+```bash
+argocd repo add https://gitlab.example.com/<groupe>/<projet>.git \
+  --username <deploy-token-name> --password <deploy-token-value> \
+  --insecure-skip-server-verification
+```
+
+> Ne committez **jamais** un token dans le repo. Les credentials vivent dans ArgoCD (Secret), pas dans git.
+
+---
+
+## Pour aller plus loin
+
+| Sujet | Ressource |
+|---|---|
+| Tutoriel complet ArgoCD (RedHat) | [redhat-scholars.github.io/argocd-tutorial](https://redhat-scholars.github.io/argocd-tutorial/argocd-tutorial/01-setup.html) |
+| ArgoCD — doc officielle | [argo-cd.readthedocs.io](https://argo-cd.readthedocs.io) |
+| Argo Rollouts — Blue/Green & Canary natifs | [argoproj.github.io/argo-rollouts](https://argoproj.github.io/argo-rollouts/) |
+| FluxCD — alternative GitOps | [fluxcd.io](https://fluxcd.io) |
+| OpenGitOps — principes de référence | [opengitops.dev](https://opengitops.dev) |
+
+➡️ **Suite : [04 — Stockage, ConfigMaps & Secrets](4-K8S-STORAGE-CONFIGMAP-SECRETS.md)**

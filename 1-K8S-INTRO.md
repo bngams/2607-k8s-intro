@@ -598,3 +598,7 @@ kubectl delete -f 1.whoami/
 | ArgoCD — GitOps & Blue/Green natif | [argo-cd.readthedocs.io](https://argo-cd.readthedocs.io) |
 | FluxCD — GitOps alternatif | [fluxcd.io](https://fluxcd.io) |
 | Kubernetes interactive (bac à sable) | [killercoda.com/playgrounds/scenario/kubernetes](https://killercoda.com/playgrounds/scenario/kubernetes) |
+
+---
+
+➡️ **Suite : [02 — Compléments : Isolation réseau, Quotas & LimitRange](2-K8S-INTRO-COMPLEMENTS.md)**

@@ -1,0 +1,20 @@
+# ResourceQuota - squelette a completer
+# Doc : https://kubernetes.io/docs/concepts/policy/resource-quotas/
+#
+# Un ResourceQuota plafonne la consommation AGREGEE d'un namespace :
+# somme des requests/limits de tous les pods + nombre d'objets.
+
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: whoami-quota
+  namespace: whoami
+spec:
+  hard:
+    requests.cpu: "____________"        # somme max des requests CPU du ns (ex: "1")
+    requests.memory: "____________"     # somme max des requests memoire (ex: 1Gi)
+    limits.cpu: "____________"          # somme max des limits CPU (ex: "2")
+    limits.memory: "____________"       # somme max des limits memoire (ex: 2Gi)
+    pods: "____________"                # nombre max de pods (ex: "5")
+    services: "____________"            # nombre max de services (ex: "3")
+    count/deployments.apps: "____________"  # nombre max de deployments (ex: "2")

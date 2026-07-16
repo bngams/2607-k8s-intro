@@ -1,0 +1,16 @@
+# Secrets / credentials — ne JAMAIS committer
+*.env
+.env
+secrets/
+*.key
+*.pem
+kubeconfig
+argocd-*.secret
+
+# Tokens
+*token*
+*.tfvars
+!*.tfvars.example
+
+# OS / éditeur
+.DS_Store
