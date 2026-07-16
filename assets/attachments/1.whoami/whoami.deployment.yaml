@@ -1,0 +1,37 @@
+# Deployment — squelette à compléter
+# Documentation : https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+
+apiVersion: ____________        # version de l'API pour les Deployments
+kind: ____________
+metadata:
+  name: whoami
+  namespace: whoami
+  labels:
+    app.kubernetes.io/name: whoami
+spec:
+  replicas: ____________        # nombre d'instances souhaitées
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ____________   # doit correspondre aux labels du template ci-dessous
+  strategy:
+    type: ____________          # stratégie de mise à jour (RollingUpdate ou Recreate)
+    rollingUpdate:
+      maxUnavailable: ____________   # nb max de pods indisponibles pendant la mise à jour
+      maxSurge: ____________         # nb max de pods supplémentaires pendant la mise à jour
+  template:                     # modèle de Pod que le Deployment va créer et gérer
+    metadata:
+      labels:
+        app.kubernetes.io/name: whoami
+    spec:
+      containers:
+      - name: whoami
+        image: ____________     # image à utiliser : traefik/whoami
+        resources:
+          limits:
+            memory: "____________"
+            cpu: "____________"
+          requests:             # ressources garanties (nécessaires pour l'HPA)
+            memory: "____________"
+            cpu: "____________"
+        ports:
+          - containerPort: ____________   # port exposé par le conteneur

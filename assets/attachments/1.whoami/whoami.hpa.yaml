@@ -1,0 +1,22 @@
+# Horizontal Pod Autoscaler — squelette à compléter
+# Documentation : https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/
+
+apiVersion: ____________
+kind: HorizontalPodAutoscaler
+metadata:
+  name: whoami-hpa
+  namespace: ____________
+spec:
+  scaleTargetRef:
+    apiVersion: ____________
+    kind: ____________
+    name: ____________          # nom du Deployment à scaler
+  minReplicas: ____________     # minimum de pods (même si charge = 0)
+  maxReplicas: ____________     # maximum de pods (même si charge très haute)
+  metrics:
+  - type: Resource
+    resource:
+      name: ____________        # métrique surveillée (cpu ou memory)
+      target:
+        type: ____________      # type de seuil (Utilization, AverageValue...)
+        ____________: ____________   # valeur du seuil (ex: averageUtilization: 50)
