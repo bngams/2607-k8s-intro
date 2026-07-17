@@ -23,6 +23,8 @@ On déploie **Spring PetClinic** — une application Java (Spring Boot) adossée
 
 ## 🗺️ Architecture cible
 
+Avant de créer quoi que ce soit, visualisons **où on va**. L'application se décompose en deux tiers — l'app web (PetClinic) et sa base (MySQL) — répartis dans **deux namespaces séparés**, avec la config et les identifiants injectés depuis l'extérieur du conteneur :
+
 ```mermaid
 graph TD
   User["navigateur<br/>petclinic.local"] --> Ing["Ingress"]
@@ -45,29 +47,72 @@ graph TD
   style ns_db fill:#dbeafe,color:#000
 ```
 
-## 📁 Arborescence des fichiers
+**Deux choix d'architecture à comprendre dès maintenant :**
+
+- **Pourquoi deux namespaces** (`pet-clinic-app` et `pet-clinic-db`) plutôt qu'un seul ? Séparer l'app et la base **isole** deux préoccupations très différentes : on peut appliquer des **NetworkPolicy** distinctes (verrouiller qui accède à la DB — [lab 03](3-K8S-COMPLEMENTS-NAMESPACES.md)), des **quotas** de ressources par tier, des **droits RBAC** différents (l'équipe app n'a pas forcément accès à la DB), et gérer indépendamment le cycle de vie et la conformité (données personnelles côté DB → RGPD). C'est une frontière naturelle en production.
+
+- **Pourquoi le Secret est-il dupliqué** dans les deux namespaces ? Un Secret **ne traverse pas** les namespaces : un pod ne peut lire que les Secrets de **son propre** namespace. Comme MySQL (ns db) et l'app (ns app) ont tous deux besoin des identifiants, le Secret doit exister **de chaque côté** — MySQL pour *créer* l'utilisateur, l'app pour *s'y connecter*.
+
+## 📁 Arborescence cible (vision finale)
+
+Voici **l'ensemble des fichiers** du projet une fois terminé — c'est la **cible**, pas ce qu'on crée d'un coup. **Tous ces fichiers sont fournis dans `assets/attachments/k8s/petclinic/`** ; on les récupérera **un par un au fil des sections suivantes**, en complétant les `# TODO` au passage.
 
 ```
 petclinic/
-├── namespaces.yaml         ← 2 namespaces (fourni)
-├── secrets.yml             ← Secret MySQL, présent dans les 2 ns (à compléter)
+├── namespaces.yaml         ← 2 namespaces (fourni)              — section 1
+├── secrets.yml             ← Secret MySQL, dans les 2 ns (TODO) — section 2
 ├── mysql/
-│   └── db.yml              ← Service headless + StatefulSet + PVC (fourni)
+│   └── db.yml              ← Service headless + StatefulSet + PVC (fourni) — section 3
 └── app/
-    ├── app.configmap.yml   ← application.properties, URL JDBC (à compléter)
-    ├── app.deploy.yml      ← Deployment (command fournie, branchements à compléter)
-    ├── app.svc.yml         ← Service (à compléter)
-    ├── app.ingress.yml     ← Ingress (fourni)
-    └── app.hpa.yml         ← HPA (à compléter)
+    ├── app.configmap.yml   ← application.properties, URL JDBC (TODO) — section 4
+    ├── app.deploy.yml      ← Deployment (command fournie, branchements TODO) — section 5
+    ├── app.svc.yml         ← Service (TODO)   — section 6
+    ├── app.ingress.yml     ← Ingress (fourni) — section 6
+    └── app.hpa.yml         ← HPA (TODO)       — section 7
 ```
+
+> Inutile de tout télécharger maintenant. Chaque section vous dit **quel fichier récupérer**, ce qu'il contient, et quoi y compléter.
 
 ---
 
-## 🧱 1 — Namespaces & Secret
+## 🏗️ 1 — Création du projet & namespaces
 
-On isole l'app et la DB dans deux namespaces. Le Secret des identifiants MySQL doit exister **dans les deux** : MySQL s'en sert pour créer l'utilisateur, l'app pour se connecter.
+### Vérifier le cluster
 
-Appliquez les namespaces (fourni), puis complétez le Secret ([secrets.yml](assets/attachments/k8s/petclinic/secrets.yml)) :
+Assurez-vous que minikube tourne et que l'addon ingress est actif :
+
+```bash
+minikube status
+minikube addons enable ingress    # si pas déjà fait
+```
+
+### Créer le dossier de travail
+
+```bash
+mkdir -p petclinic/mysql petclinic/app
+cd petclinic
+```
+
+### Premier fichier : les namespaces
+
+Récupérez [namespaces.yaml](assets/attachments/k8s/petclinic/namespaces.yaml) (fourni, rien à compléter) dans `petclinic/`, puis appliquez-le :
+
+```bash
+kubectl apply -f namespaces.yaml
+kubectl get ns | grep pet-clinic
+# pet-clinic-app    Active
+# pet-clinic-db     Active
+```
+
+**En conclusion, vous obtenez deux namespaces** — un pour l'app, un pour la base. Comme expliqué dans l'architecture ci-dessus, cette séparation prépare l'isolation réseau/RBAC/quotas et la gestion indépendante des deux tiers (dont la conformité RGPD côté données). Toutes les ressources suivantes iront dans l'un ou l'autre.
+
+---
+
+## 🔑 2 — Le Secret des identifiants MySQL
+
+L'app et MySQL partagent un même couple **utilisateur / mot de passe**. On le stocke dans un **Secret** ([lab 05](5-K8S-SECRETS.md)) — jamais en clair dans les manifests. Rappel de l'archi : ce Secret doit exister **dans les deux namespaces** (un pod ne lit que les Secrets de son namespace).
+
+Récupérez [secrets.yml](assets/attachments/k8s/petclinic/secrets.yml) et complétez les `# TODO` :
 
 ```yaml
 data:
@@ -75,16 +120,18 @@ data:
   password: ____________     # TODO : base64
 ```
 
-> **Rappel base64 ≠ chiffrement** ([lab 05](5-K8S-SECRETS.md)) : `data` attend du base64. Pour éviter l'encodage manuel, vous pouvez utiliser `stringData:` (texte clair, Kubernetes encode). Les deux Secrets (app + db) doivent porter les **mêmes** valeurs.
+> **Rappel base64 ≠ chiffrement** ([lab 05](5-K8S-SECRETS.md)) : `data` attend du base64. Pour éviter l'encodage manuel, utilisez `stringData:` (texte clair, Kubernetes encode). Les deux Secrets (app + db) doivent porter les **mêmes** valeurs.
 
 ```bash
-kubectl apply -f namespaces.yaml
 kubectl apply -f secrets.yml
+# vérifier la présence dans les deux namespaces
+kubectl get secret mysql-secret -n pet-clinic-app
+kubectl get secret mysql-secret -n pet-clinic-db
 ```
 
 ---
 
-## 🗄️ 2 — MySQL : StatefulSet + PVC
+## 🗄️ 3 — MySQL : StatefulSet + PVC
 
 La base de données doit **persister** : on la déploie en **StatefulSet** avec un volume (via `volumeClaimTemplates`), pas en Pod nu.
 
@@ -102,7 +149,7 @@ kubectl -n pet-clinic-db get pvc      # data-mysql-0  Bound
 
 ---
 
-## ⚙️ 3 — ConfigMap de l'app : l'URL de la base
+## ⚙️ 4 — ConfigMap de l'app : l'URL de la base
 
 L'app lit sa configuration Spring dans un fichier `application.properties`, qu'on lui fournit via une **ConfigMap montée en volume** ([lab 04](4-K8S-CONFIGMAPS.md)). Le point central : **l'URL JDBC de la base**.
 
@@ -129,7 +176,7 @@ kubectl apply -f app/app.configmap.yml
 
 ---
 
-## 🚀 4 — Deployment de l'app
+## 🚀 5 — Deployment de l'app
 
 C'est le cœur de l'assemblage. L'image et la **commande de lancement** sont fournies (spécifiques à Spring Boot — ne les modifiez pas) ; à vous de **brancher le Secret** (env) et **monter la ConfigMap** (volume).
 
@@ -158,11 +205,11 @@ kubectl -n pet-clinic-app logs deploy/java-app | grep -iE "HikariPool.*Added con
 # => Started PetClinicApplication in ... seconds
 ```
 
-> **Symptôme → Cause → Correctif.** Si le pod `CrashLoopBackOff` avec une erreur de connexion JDBC : (1) l'URL de la ConfigMap ne pointe pas sur le bon FQDN cross-namespace (étape 3) ; (2) le Secret n'est pas branché en env (les `${DB_...}` restent vides) ; (3) MySQL n'est pas encore prêt. Vérifiez dans cet ordre.
+> **Symptôme → Cause → Correctif.** Si le pod `CrashLoopBackOff` avec une erreur de connexion JDBC : (1) l'URL de la ConfigMap ne pointe pas sur le bon FQDN cross-namespace (section 4) ; (2) le Secret n'est pas branché en env (les `${DB_...}` restent vides) ; (3) MySQL n'est pas encore prêt. Vérifiez dans cet ordre.
 
 ---
 
-## 🌐 5 — Service & Ingress
+## 🌐 6 — Service & Ingress
 
 Exposez l'app : d'abord un **Service** (l'app écoute sur `8080`, on l'expose sur `80`), puis un **Ingress** sur `petclinic.local`.
 
@@ -187,7 +234,7 @@ curl -s http://petclinic.local | grep -o '<title>[^<]*</title>'
 
 ---
 
-## 📈 6 — Autoscaling (HPA)
+## 📈 7 — Autoscaling (HPA)
 
 Enfin, on ajoute un **Horizontal Pod Autoscaler** pour mettre l'app à l'échelle selon la charge CPU ([lab 01](1-K8S-INTRO.md)).
 
@@ -216,9 +263,11 @@ Vous avez un déploiement multi-tiers complet. Vérifiez :
 
 - [ ] `kubectl get all -n pet-clinic-app` et `-n pet-clinic-db` : tout est `Running`
 - [ ] PetClinic répond sur `http://petclinic.local`
-- [ ] Les données MySQL survivent à un `kubectl delete pod mysql-0 -n pet-clinic-db` (grâce au PVC)
+- [ ] Les données MySQL survivent à un `kubectl delete pod mysql-0 -n pet-clinic-db` : le StatefulSet recrée le pod (même nom `mysql-0`) et lui **remonte le même PVC** — comme démontré au [lab 06](6-K8S-STORAGE.md)
 - [ ] Le HPA affiche `2/5` replicas et un `%` de CPU
 - [ ] Vous savez tracer le chemin d'une requête : Ingress → Service → app → (FQDN) → MySQL
+
+> **Attention au piège du `reclaimPolicy`.** La survie de la donnée à un `delete pod` ne dépend **pas** du `reclaimPolicy` : tant que le **PVC** existe, le volume est conservé et remonté, quel que soit ce réglage. Le `reclaimPolicy` (`Delete` par défaut sur la StorageClass `standard` de minikube, vu au [lab 06](6-K8S-STORAGE.md)) n'entre en jeu **qu'au moment où on supprime le PVC** — il décide alors si le **PV** (le stockage réel) est effacé ou conservé. C'est donc le `kubectl delete namespace` du nettoyage ci-dessous (qui supprime les PVC) qui effacera les données, pas un `delete pod`.
 
 ---
 
