@@ -1,0 +1,23 @@
+# HorizontalPodAutoscaler pour l'app - squelette a completer
+# Prerequis : metrics-server actif (minikube addons enable metrics-server)
+# et resources.requests.cpu definis sur le Deployment (deja fait dans app.deploy.yml).
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: java-app-hpa
+  namespace: pet-clinic-app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ____________          # TODO : nom du Deployment a scaler (java-app)
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: ____________   # TODO : seuil en % (ex: 50)

@@ -1,0 +1,54 @@
+# Deployment de l'application PetClinic - squelette a completer
+# L'image et la COMMANDE de lancement sont fournies (specifiques a Spring Boot).
+# A vous : brancher le Secret (env) et monter la ConfigMap (volume) - concepts vus aux labs 05 et 04.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: java-app
+  namespace: pet-clinic-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: java-app
+  template:
+    metadata:
+      labels:
+        app: java-app
+    spec:
+      containers:
+      - name: app
+        image: techiescamp/kube-petclinic-app:3.0.0
+        # Commande de lancement Spring Boot (FOURNIE - ne pas modifier) :
+        #  - charge la config depuis le fichier monte par la ConfigMap
+        #  - active le profil "mysql"
+        command: ["java", "-jar", "/app/java.jar", "--spring.config.location=/opt/config/application.properties", "--spring.profiles.active=mysql"]
+        env:
+        # DB_USERNAME / DB_PASSWORD alimentent les ${...} de application.properties
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: ____________       # TODO : mysql-secret
+              key: ____________         # TODO : username
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ____________       # TODO : mysql-secret
+              key: ____________         # TODO : password
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: 250m                    # requests obligatoires pour que le HPA calcule un %
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+        volumeMounts:
+        - name: config
+          mountPath: "____________"      # TODO : /opt/config (ou la command attend application.properties)
+      volumes:
+      - name: config
+        configMap:
+          name: ____________             # TODO : java-app-config

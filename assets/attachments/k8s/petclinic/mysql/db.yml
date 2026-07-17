@@ -1,0 +1,65 @@
+# MySQL : Service headless + StatefulSet avec PVC (fourni)
+# - Service headless (clusterIP: None) : requis par un StatefulSet
+# - StatefulSet : identite stable + volume persistant par replica (volumeClaimTemplates)
+# - les identifiants MYSQL_USER/PASSWORD viennent du Secret mysql-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: pet-clinic-db
+spec:
+  selector:
+    app: mysql
+  ports:
+  - port: 3306
+    targetPort: 3306
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: pet-clinic-db
+spec:
+  serviceName: mysql
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: rootpw
+        - name: MYSQL_DATABASE
+          value: petclinic
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: username
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ReadWriteOnce]
+      resources:
+        requests:
+          storage: 1Gi

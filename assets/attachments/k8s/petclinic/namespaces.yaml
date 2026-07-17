@@ -1,0 +1,10 @@
+# Deux namespaces : l'appli et la base de donnees (fourni)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pet-clinic-app
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pet-clinic-db

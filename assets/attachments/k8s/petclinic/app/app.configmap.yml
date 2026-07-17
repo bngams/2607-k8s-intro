@@ -1,0 +1,30 @@
+# ConfigMap de l'application PetClinic - squelette a completer
+# Contient le fichier application.properties (config Spring Boot).
+# Sera monte dans le conteneur app sous /opt/config/application.properties.
+#
+# POINT CLE : l'URL JDBC doit pointer sur le Service MySQL, qui vit dans un
+# AUTRE namespace (pet-clinic-db). Il faut donc son FQDN complet :
+#   <service>.<namespace>.svc.cluster.local
+# ${DB_USERNAME} / ${DB_PASSWORD} seront fournis en variables d'env au conteneur
+# (depuis le Secret) - Spring les substitue au demarrage.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: java-app-config
+  namespace: pet-clinic-app
+data:
+  application.properties: |
+    database=mysql
+    # TODO : completer l'URL avec le FQDN du service mysql du namespace pet-clinic-db, port 3306, base "petclinic"
+    spring.datasource.url=jdbc:mysql://____________:____________/____________
+    spring.datasource.username=${DB_USERNAME}
+    spring.datasource.password=${DB_PASSWORD}
+    spring.sql.init.mode=always
+    spring.thymeleaf.mode=HTML
+    spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect
+    spring.jpa.open-in-view=true
+    spring.messages.basename=messages/messages
+    management.endpoints.web.exposure.include=*
+    logging.level.org.springframework=INFO
+    spring.web.resources.cache.cachecontrol.max-age=12h

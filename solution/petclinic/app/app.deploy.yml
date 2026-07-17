@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: java-app
+  namespace: pet-clinic-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: java-app}
+  template:
+    metadata:
+      labels: {app: java-app}
+    spec:
+      containers:
+      - name: app
+        image: techiescamp/kube-petclinic-app:3.0.0
+        command: ["java", "-jar", "/app/java.jar", "--spring.config.location=/opt/config/application.properties", "--spring.profiles.active=mysql"]
+        env:
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef: {name: mysql-secret, key: username}
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef: {name: mysql-secret, key: password}
+        ports:
+        - containerPort: 8080
+        resources:
+          requests: {cpu: 250m, memory: 512Mi}
+          limits: {cpu: "1", memory: 1Gi}
+        volumeMounts:
+        - name: config
+          mountPath: /opt/config
+      volumes:
+      - name: config
+        configMap: {name: java-app-config}

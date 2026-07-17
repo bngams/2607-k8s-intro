@@ -292,4 +292,6 @@ graph LR
   style SC fill:#f59e0b,color:#000
 ```
 
-➡️ **Précédent : [05 — Secrets](5-K8S-SECRETS.md)**
+➡️ **Suite : [07 — Cas global : PetClinic (Java + MySQL)](7-K8S-CAS-GLOBAL-PETCLINIC.md)**
+
+⬅️ **Précédent : [05 — Secrets](5-K8S-SECRETS.md)**

@@ -1,0 +1,14 @@
+# Service exposant l'application PetClinic dans le cluster - squelette a completer
+# L'app ecoute sur 8080 dans le conteneur ; on l'expose sur le port 80 du Service.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: java-app
+  namespace: pet-clinic-app
+spec:
+  selector:
+    app: ____________          # TODO : selectionner les pods de l'app (java-app)
+  ports:
+  - port: 80
+    targetPort: ____________    # TODO : port du conteneur (8080)
