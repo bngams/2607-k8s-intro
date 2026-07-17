@@ -36,8 +36,12 @@ spec:
       - name: mysql
         image: mysql:8.0
         env:
+        # En clair pour simplifier le lab -> en prod, MYSQL_ROOT_PASSWORD devrait
+        # aussi venir d'un Secret (secretKeyRef), comme MYSQL_USER/MYSQL_PASSWORD ci-dessous.
         - name: MYSQL_ROOT_PASSWORD
           value: rootpw
+        # Nom de la base a creer au demarrage : non sensible, une ConfigMap conviendrait
+        # aussi (plutot qu'un env "value" en dur).
         - name: MYSQL_DATABASE
           value: petclinic
         - name: MYSQL_USER

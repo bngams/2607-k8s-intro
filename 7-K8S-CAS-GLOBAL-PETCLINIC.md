@@ -170,6 +170,15 @@ Complétez [app/app.configmap.yml](assets/attachments/k8s/petclinic/app/app.conf
 
 > **`${DB_USERNAME}` / `${DB_PASSWORD}`** ne sont pas des placeholders Kubernetes : ce sont des variables que **Spring** substitue au démarrage, à partir des **variables d'environnement** du conteneur — qu'on alimentera depuis le Secret à l'étape suivante.
 
+> ⚠️ **Piège vérifié — l'initialisation du schéma SQL.** Le fichier fourni contient aussi ces trois lignes, **à ne pas retirer** :
+> ```properties
+> spring.sql.init.mode=always
+> spring.sql.init.schema-locations=classpath*:db/mysql/schema.sql
+> spring.sql.init.data-locations=classpath*:db/mysql/data.sql
+> spring.jpa.hibernate.ddl-auto=none
+> ```
+> **Pourquoi ?** La commande de lancement utilise `--spring.config.location=/opt/config/application.properties` : elle **remplace intégralement** le `application.properties` embarqué dans l'image. Les propriétés qui disent *où trouver les scripts SQL* (`schema.sql` / `data.sql`, embarqués dans le jar sous `db/mysql/`) sont donc perdues si on ne les redéclare pas — et la base reste **vide**. Symptôme typique : la page d'accueil s'affiche (elle ne touche pas la DB), mais `/vets.html` plante avec `Table 'petclinic.vets' doesn't exist`. `ddl-auto=none` indique à Hibernate de **ne pas** créer le schéma lui-même : ce sont bien les scripts SQL qui font foi.
+
 ```bash
 kubectl apply -f app/app.configmap.yml
 ```
@@ -205,7 +214,9 @@ kubectl -n pet-clinic-app logs deploy/java-app | grep -iE "HikariPool.*Added con
 # => Started PetClinicApplication in ... seconds
 ```
 
-> **Symptôme → Cause → Correctif.** Si le pod `CrashLoopBackOff` avec une erreur de connexion JDBC : (1) l'URL de la ConfigMap ne pointe pas sur le bon FQDN cross-namespace (section 4) ; (2) le Secret n'est pas branché en env (les `${DB_...}` restent vides) ; (3) MySQL n'est pas encore prêt. Vérifiez dans cet ordre.
+> **Symptôme → Cause → Correctif.**
+> - **`CrashLoopBackOff` + erreur de connexion JDBC :** (1) l'URL de la ConfigMap ne pointe pas sur le bon FQDN cross-namespace (section 4) ; (2) le Secret n'est pas branché en env (les `${DB_...}` restent vides) ; (3) MySQL n'est pas encore prêt. Vérifiez dans cet ordre.
+> - **L'app démarre (HikariPool OK), mais `/vets.html` renvoie 500 avec `Table 'petclinic.vets' doesn't exist` :** le schéma n'a pas été initialisé — il manque les lignes `spring.sql.init.schema-locations` / `data-locations` / `ddl-auto=none` dans la ConfigMap (voir le piège de la section 4). La connexion marche, mais la base est vide.
 
 ---
 
@@ -218,11 +229,22 @@ Complétez [app/app.svc.yml](assets/attachments/k8s/petclinic/app/app.svc.yml) (
 ```bash
 kubectl apply -f app/app.svc.yml
 kubectl apply -f app/app.ingress.yml
-
-# résoudre petclinic.local en local (comme au lab 01)
-echo "$(minikube ip)  petclinic.local" | sudo tee -a /etc/hosts
-# ou avec `minikube tunnel` actif :  echo "127.0.0.1  petclinic.local" | sudo tee -a /etc/hosts
 ```
+
+> ⚠️ **Pour accéder à `http://petclinic.local` (macOS / Windows), deux étapes indispensables** (comme au [lab 01](1-K8S-INTRO.md)) :
+>
+> **1. `minikube tunnel`** — sur macOS/Windows, l'Ingress de minikube n'est **pas** joignable directement. Laissez cette commande tourner dans un terminal dédié (elle demande le mot de passe sudo) :
+> ```bash
+> minikube tunnel
+> ```
+>
+> **2. Résoudre `petclinic.local` dans le fichier hosts** (`/etc/hosts` sur macOS/Linux, `C:\Windows\System32\drivers\etc\hosts` sur Windows) :
+> ```bash
+> # avec minikube tunnel actif, le point d'entrée est 127.0.0.1 :
+> echo "127.0.0.1  petclinic.local" | sudo tee -a /etc/hosts
+> # sans tunnel (Linux, accès direct par l'IP minikube) :
+> echo "$(minikube ip)  petclinic.local" | sudo tee -a /etc/hosts
+> ```
 
 Ouvrez [http://petclinic.local](http://petclinic.local) → la page **PetClinic** s'affiche. 🎉
 
@@ -230,6 +252,10 @@ Ouvrez [http://petclinic.local](http://petclinic.local) → la page **PetClinic*
 # test en ligne de commande
 curl -s http://petclinic.local | grep -o '<title>[^<]*</title>'
 # => <title>PetClinic :: a Spring Framework demonstration</title>
+
+# IMPORTANT : tester aussi une page qui LIT la base (la page d'accueil, elle, n'y touche pas)
+curl -s -o /dev/null -w "GET /vets.html -> HTTP %{http_code}\n" http://petclinic.local/vets.html
+# => HTTP 200   (si 500 : l'init SQL n'a pas tourné — revoir la ConfigMap, section 4)
 ```
 
 ---
@@ -263,6 +289,7 @@ Vous avez un déploiement multi-tiers complet. Vérifiez :
 
 - [ ] `kubectl get all -n pet-clinic-app` et `-n pet-clinic-db` : tout est `Running`
 - [ ] PetClinic répond sur `http://petclinic.local`
+- [ ] La page **Veterinarians** (`/vets.html`) affiche des données → la base a bien été **initialisée** (schéma + data)
 - [ ] Les données MySQL survivent à un `kubectl delete pod mysql-0 -n pet-clinic-db` : le StatefulSet recrée le pod (même nom `mysql-0`) et lui **remonte le même PVC** — comme démontré au [lab 06](6-K8S-STORAGE.md)
 - [ ] Le HPA affiche `2/5` replicas et un `%` de CPU
 - [ ] Vous savez tracer le chemin d'une requête : Ingress → Service → app → (FQDN) → MySQL

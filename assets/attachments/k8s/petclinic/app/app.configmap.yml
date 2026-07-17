@@ -20,7 +20,13 @@ data:
     spring.datasource.url=jdbc:mysql://____________:____________/____________
     spring.datasource.username=${DB_USERNAME}
     spring.datasource.password=${DB_PASSWORD}
+    # Init du schema + donnees : INDISPENSABLE. Comme --spring.config.location REMPLACE
+    # le application.properties embarque dans le jar, il faut re-declarer ou trouver les
+    # scripts SQL (embarques sous db/mysql/) ET laisser Hibernate ne PAS gerer le schema.
     spring.sql.init.mode=always
+    spring.sql.init.schema-locations=classpath*:db/mysql/schema.sql
+    spring.sql.init.data-locations=classpath*:db/mysql/data.sql
+    spring.jpa.hibernate.ddl-auto=none
     spring.thymeleaf.mode=HTML
     spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect
     spring.jpa.open-in-view=true
