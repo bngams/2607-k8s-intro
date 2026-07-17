@@ -1,0 +1,34 @@
+# CronJob de backup quotidien (fourni - pour le Challenge final)
+# Un CronJob cree un Job selon un planning cron. Chaque execution ecrit un dump
+# horodate dans le PVC : les backups s'accumulent et persistent.
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mongo-backup
+  namespace: secret-demo
+spec:
+  schedule: "*/1 * * * *"          # toutes les minutes pour la demo ; en prod : "0 2 * * *"
+  successfulJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: backup
+            image: mongo:7
+            command:
+            - sh
+            - -c
+            - |
+              TS=$(date +%Y%m%d-%H%M%S)
+              mongodump --uri="mongodb://k8sExercice:k8sExercice@mongo:27017/message?authSource=admin" --out=/backup/$TS
+              echo "backup $TS OK"; ls /backup
+            volumeMounts:
+            - name: backups
+              mountPath: /backup
+          volumes:
+          - name: backups
+            persistentVolumeClaim:
+              claimName: mongo-backups

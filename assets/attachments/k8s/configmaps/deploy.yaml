@@ -1,0 +1,31 @@
+# Deployment nginx configure par une ConfigMap montee en volume - squelette a completer
+# La variable d'env CONFIG_HASH permettra plus tard de forcer un redeploiement
+# quand la ConfigMap change (voir la section "piege" du lab).
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: www
+  namespace: cm-demo
+spec:
+  selector:
+    matchLabels:
+      app: www
+  template:
+    metadata:
+      labels:
+        app: www
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.27-alpine
+        volumeMounts:
+        - name: config
+          mountPath: "/etc/nginx/"
+        # env:                             # (a ajouter dans la section "solution" du lab)
+        # - name: CONFIG_HASH
+        #   value: ${CONFIG_HASH}
+      volumes:
+      - name: config
+        configMap:
+          name: ____________               # TODO : nom de la ConfigMap (www-config)

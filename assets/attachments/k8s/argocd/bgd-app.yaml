@@ -1,0 +1,24 @@
+# Application ArgoCD pour l'app de demo publique "bgd" (fourni, rien a completer)
+# Repo public RedHat -> aucun credential necessaire.
+# Doc : https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#applications
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: bgd-app
+  namespace: argocd            # l'Application vit dans le ns d'ArgoCD
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/redhat-developer-demos/openshift-gitops-examples
+    targetRevision: minikube
+    path: apps/bgd/overlays/bgd
+  destination:
+    server: https://kubernetes.default.svc   # cluster local
+    namespace: bgd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: false          # on l'activera a l'etape 8 (self-heal)
+    syncOptions:
+    - CreateNamespace=true      # cree le ns bgd s'il n'existe pas

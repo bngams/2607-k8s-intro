@@ -1,6 +1,6 @@
-# 02 — Kubernetes : compléments (Isolation réseau, Quotas & LimitRange)
+# 03 — Kubernetes : compléments (Isolation réseau, Quotas & LimitRange)
 
-> **Format — TP à construire soi-même.** Ce guide vous fait *construire* les manifests à partir d'indices. Les fichiers fournis dans `assets/attachments/k8s/` contiennent des `# TODO` à compléter. Un dossier `solution/` (à la fin) n'est là qu'en dernier recours.
+> **Scénario à réaliser en autonomie.** Vous complétez vous-même les manifests à partir d'indices : les fichiers fournis dans `assets/attachments/k8s/` contiennent des `# TODO` à remplir. Un dossier `solution/` (à la fin) n'est là qu'en dernier recours.
 
 Ce TP prolonge le [lab 01](1-K8S-INTRO.md). On y a vu les briques de déploiement (namespace, pod, service, ingress, deployment, HPA). On complète maintenant avec deux préoccupations centrales de la **gestion multi-app d'un cluster** :
 
@@ -36,11 +36,11 @@ Arborescence cible à la fin de ce TP :
 ├── whoami.ingress.yml
 ├── whoami.hpa.yaml
 ├── quotas/
-│   ├── whoami.resourcequota.yaml     ← §5 à écrire
-│   └── whoami.limitrange.yaml        ← §6 à écrire
+│   ├── whoami.resourcequota.yaml     ← section 7 à écrire
+│   └── whoami.limitrange.yaml        ← section 8 à écrire
 └── networkpolicies/
-    ├── 00-default-deny-ingress.yaml  ← §3 à écrire
-    ├── 01-allow-frontend.yaml        ← §4 à écrire
+    ├── 00-default-deny-ingress.yaml  ← section 3 à écrire
+    ├── 01-allow-frontend.yaml        ← section 4 à écrire
     └── clients.yaml                  ← fourni (2 ns de test)
 ```
 
@@ -48,7 +48,7 @@ Arborescence cible à la fin de ce TP :
 
 # Partie A — Isolation réseau
 
-## 🌐 §1 — Le CNI : la couche qui rend le réseau possible
+## 🌐 1 — Le CNI : la couche qui rend le réseau possible
 
 Kubernetes **ne fournit pas** le réseau des pods lui-même. Il délègue cette tâche à un **plugin CNI** (*Container Network Interface*). Le CNI est le composant qui :
 
@@ -94,7 +94,7 @@ kubectl --context calico-lab get pods -n kube-system | grep calico
 
 ---
 
-## 🧩 §2 — Déployer whoami + les clients de test sur `calico-lab`
+## 🧩 2 — Déployer whoami + les clients de test sur `calico-lab`
 
 On déploie whoami (namespace `whoami`) et deux namespaces « clients » qui serviront de cobayes.
 
@@ -118,9 +118,42 @@ kubectl --context calico-lab -n frontend wait --for=condition=Ready pod/client -
 kubectl --context calico-lab -n other    wait --for=condition=Ready pod/client --timeout=90s
 ```
 
+> **D'où vient `wait --for=condition=Ready` ?** Chaque objet Kubernetes publie son état dans un champ `status.conditions` — une liste de conditions typées (`PodScheduled`, `Initialized`, `ContainersReady`, `Ready`...) que le pod passe à `True` au fur et à mesure de son cycle de vie. `Ready` signifie « le pod est démarré ET répond à ses readiness checks », donc joignable. `kubectl wait --for=condition=Ready` **bloque** jusqu'à ce que cette condition soit `True` (ou que `--timeout` expire) — pratique pour ne tester la connectivité qu'une fois le pod réellement prêt, au lieu d'enchaîner des `kubectl get` manuels.
+> ```bash
+> # voir les conditions d'un pod :
+> kubectl -n frontend get pod client -o jsonpath='{.status.conditions}' | jq
+> ```
+> 📖 [Pod lifecycle — Pod conditions](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-conditions)
+
+### 🗺️ L'archi avec les namespaces (avant policies)
+
+Trois namespaces, deux clients, un service cible. Aucune barrière encore — tout le monde peut joindre whoami :
+
+```mermaid
+graph LR
+  subgraph ns_frontend["ns frontend — role=frontend"]
+    CF["pod client<br/>(curl)"]
+  end
+  subgraph ns_other["ns other — role=other"]
+    CO["pod client<br/>(curl)"]
+  end
+  subgraph ns_whoami["ns whoami"]
+    SVC["Service whoami<br/>whoami.whoami.svc.cluster.local:80"]
+    P["pod whoami<br/>(traefik/whoami)"]
+    SVC -->|"selector app=whoami"| P
+  end
+  CF -->|"✅ 200"| SVC
+  CO -->|"✅ 200"| SVC
+  style ns_whoami fill:#dbeafe,color:#000
+  style ns_frontend fill:#dcfce7,color:#000
+  style ns_other fill:#fee2e2,color:#000
+```
+
+> C'est l'état de départ. Aux sections 3 et 4, on ajoutera des NetworkPolicy pour couper `other` tout en gardant `frontend`.
+
 ### 🧪 Manip — l'état AVANT toute policy
 
-Testez la connectivité des deux clients vers whoami. Sans policy, **tout passe** (Calico est permissif par défaut) :
+Testez la connectivité des deux clients vers whoami. Pour communiquer avec un service sur un autre namespace on peut utiliser son FQDN DNS interne. Par exemple, pour contacter le service `whoami` (qui vit dans le namespace `whoami`) depuis les namespaces `frontend`/`other`, on utilise le nom `whoami.whoami.svc.cluster.local` (voir plus bas pour l'usage détaillé). Sans policy, **tout passe** (Calico est permissif par défaut) :
 
 ```bash
 # frontend -> whoami
@@ -136,9 +169,26 @@ kubectl --context calico-lab -n other exec client -- \
 
 Les deux répondent `200`. Retenez ce résultat : on va le faire changer.
 
+> **D'où vient le nom `whoami.whoami.svc.cluster.local` ?** C'est le **FQDN DNS interne** d'un Service, résolu par le DNS du cluster (CoreDNS). Il suit toujours le même patron :
+>
+> ```
+>   whoami   .   whoami   .   svc   .   cluster.local
+>  <service>    <namespace>   <type>    <suffixe du cluster>
+> ```
+>
+> | Segment | Valeur ici | Rôle |
+> |---|---|---|
+> | `<service>` | `whoami` | nom de l'objet Service |
+> | `<namespace>` | `whoami` | namespace où vit le Service (d'où le doublon) |
+> | `svc` | `svc` | indique une ressource de type Service |
+> | `<suffixe>` | `cluster.local` | domaine du cluster (par défaut) |
+>
+> **Formes courtes** (grâce au `search` DNS injecté dans `/etc/resolv.conf` des pods) : depuis un pod **du même namespace**, `whoami` suffit ; depuis un **autre namespace**, `whoami.whoami` suffit. On écrit le FQDN complet ici pour être explicite (les clients sont dans `frontend`/`other`, pas dans `whoami`).
+> 📖 [DNS for Services and Pods](https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/)
+
 ---
 
-## 🔒 §3 — Couper tout le trafic entrant (default-deny)
+## 🔒 3 — Couper tout le trafic entrant (default-deny)
 
 Le point de départ d'une posture **zero-trust** : on ferme tout, puis on rouvre au cas par cas.
 
@@ -172,6 +222,8 @@ kubectl --context calico-lab apply -f 1.whoami/networkpolicies/00-default-deny-i
 
 ### 🧪 Manip — plus personne ne passe
 
+On rejoue la commande pour contacter notre whoami depuis un autre namespace (`frontend`), via son FQDN DNS interne :
+
 ```bash
 kubectl --context calico-lab -n frontend exec client -- \
   curl -s -m 5 -o /dev/null -w "%{http_code}\n" http://whoami.whoami.svc.cluster.local || echo "(timeout — attendu)"
@@ -182,11 +234,37 @@ kubectl --context calico-lab -n frontend exec client -- \
 
 ---
 
-## ✅ §4 — Rouvrir sélectivement (allow-frontend)
+## ✅ 4 — Rouvrir sélectivement (allow-frontend)
 
 On autorise **uniquement** le namespace `role=frontend` à joindre whoami, **sur le port 80**.
 
-Décomposition des sélecteurs de source (le cœur du sujet) :
+Pour cela, on ajoute une NetworkPolicy avec une **règle `ingress`** : contrairement au default-deny (qui n'avait aucune règle), celle-ci déclare une liste `from` de sources explicitement autorisées. Tout ce qui n'est pas listé reste bloqué. Le point délicat est justement d'écrire correctement ces sources.
+
+La section `ingress.from` d'une NetworkPolicy est une **liste** (`-`) de sources autorisées. Chaque entrée peut combiner `namespaceSelector` et/ou `podSelector`. La subtilité — et le cœur du sujet — c'est la **structure des tirets** :
+
+```yaml
+ingress:
+- from:
+  # === CAS 1 : ET (un seul tiret) ===
+  # les pods role=client, MAIS SEULEMENT dans les namespaces role=frontend
+  - namespaceSelector:
+      matchLabels:
+        role: frontend
+    podSelector:              # même tiret que namespaceSelector -> ET
+      matchLabels:
+        role: client
+
+  # === CAS 2 : OU (deux tirets séparés) ===
+  # tous les pods des namespaces role=frontend  OU  tous les pods role=client (n'importe où)
+  - namespaceSelector:
+      matchLabels:
+        role: frontend
+  - podSelector:              # nouveau tiret -> nouvelle source -> OU
+      matchLabels:
+        role: client
+```
+
+Décomposition des sélecteurs de source :
 
 | Champ dans `from:` | Ce qu'il filtre |
 |---|---|
@@ -196,6 +274,8 @@ Décomposition des sélecteurs de source (le cœur du sujet) :
 | deux entrées `-` séparées | union (OU logique) |
 
 > ⚠️ **Piège fréquent :** `namespaceSelector` + `podSelector` sous le **même tiret** = ET. Sous **deux tirets** = OU. Une erreur ici ouvre bien plus (ou bien moins) que prévu.
+
+Dans notre cas c'est le plus simple : **une seule source**, un `namespaceSelector` sur `role=frontend` (pas de `podSelector`, donc tous les pods de ce namespace).
 
 ### 🚧 À compléter
 
@@ -247,11 +327,11 @@ kubectl --context calico-lab -n other exec client -- \
 
 **C'est le résultat clé du TP** : `frontend` → 200, `other` → bloqué. La même app, deux clients, un seul autorisé — par label de namespace.
 
-> **Symptôme → Cause → Correctif.** Si `frontend` est *aussi* bloqué après le §4 : vérifiez le label du namespace (`kubectl get ns frontend --show-labels` doit montrer `role=frontend`) et que le `namespaceSelector` de la policy pointe bien sur `role: frontend`. Un label absent = aucune source ne matche = tout reste coupé.
+> **Symptôme → Cause → Correctif.** Si `frontend` est *aussi* bloqué après la section 4 : vérifiez le label du namespace (`kubectl get ns frontend --show-labels` doit montrer `role=frontend`) et que le `namespaceSelector` de la policy pointe bien sur `role: frontend`. Un label absent = aucune source ne matche = tout reste coupé.
 
 ---
 
-## 🎨 §5 — Concevoir visuellement avec l'éditeur (démo live)
+## 🎨 5 — Concevoir visuellement avec l'éditeur (démo live)
 
 Écrire des NetworkPolicy à la main devient vite illisible. L'outil [editor.networkpolicy.io](https://editor.networkpolicy.io/) permet de **dessiner** la policy (sources, cibles, ports) et d'**exporter le YAML**.
 
@@ -272,7 +352,7 @@ kubectl --context calico-lab -n other exec client -- \
 
 # Partie B — Quotas & isolation des ressources
 
-## 📦 §6 — Le CRI, et pourquoi les limites sont « réelles »
+## 📦 6 — Le CRI, et pourquoi les limites sont « réelles »
 
 Symétriquement au CNI (réseau), le **CRI** (*Container Runtime Interface*) est l'interface par laquelle kubelet pilote le **runtime de conteneurs** (containerd, CRI-O, ou docker via un shim). C'est le runtime, en s'appuyant sur les **cgroups** du noyau Linux, qui **fait réellement respecter** les `limits` CPU/mémoire d'un conteneur.
 
@@ -298,7 +378,7 @@ Cette partie B se fait sur **n'importe quel cluster** (le CRI applique les limit
 
 ---
 
-## 🧮 §7 — ResourceQuota : plafonner un namespace
+## 🧮 7 — ResourceQuota : plafonner un namespace
 
 Un **ResourceQuota** impose un plafond **agrégé** à un namespace : la **somme** des requests/limits de tous les pods, et le **nombre** d'objets (pods, services, deployments...).
 
@@ -353,7 +433,7 @@ La colonne `Used` vs `Hard` : votre tableau de bord de consommation du namespace
 
 ---
 
-## 🧷 §8 — LimitRange : bornes par conteneur (et le piège du quota)
+## 🧷 8 — LimitRange : bornes par conteneur (et le piège du quota)
 
 > ⚠️ **Le piège à vivre en premier.** Dès qu'un ResourceQuota impose `requests.*`/`limits.*`, **tout pod qui n'en déclare pas est REFUSÉ**. Démontrez-le :
 > ```bash
@@ -361,7 +441,7 @@ La colonne `Used` vs `Hard` : votre tableau de bord de consommation du namespace
 > # Error from server (Forbidden): pods "naked" is forbidden: failed quota:
 > #   whoami-quota: must specify limits.cpu,limits.memory,requests.cpu,requests.memory
 > ```
-> **Cause :** le quota exige des chiffres, le pod n'en donne aucun → rejet. **Correctif :** un **LimitRange**, qui injecte des valeurs par défaut.
+> **Cause :** le quota exige des chiffres, le pod n'en donne aucun → rejet. **Correctif :** il vaut mieux un **LimitRange**, qui injecte des valeurs par défaut.
 
 Un **LimitRange** agit **par conteneur** (pas en agrégé). Il :
 
@@ -515,4 +595,4 @@ graph TD
 | Limit Ranges | [kubernetes.io/docs/concepts/policy/limit-range](https://kubernetes.io/docs/concepts/policy/limit-range/) |
 | CNI / CRI / CSI expliqués | [kubernetes.io/docs/concepts/extend-kubernetes](https://kubernetes.io/docs/concepts/extend-kubernetes/) |
 
-➡️ **Suite : [03 — Introduction à ArgoCD (GitOps)](3-K8S-INTRO-ARGO.md)**
+➡️ **Suite : [04 — ConfigMaps](4-K8S-CONFIGMAPS.md)**

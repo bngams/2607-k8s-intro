@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mongo
+  namespace: secret-demo
+  labels: {app: mongo}
+spec:
+  containers:
+  - name: mongo
+    image: mongo:7
+    env:
+    - name: MONGO_INITDB_ROOT_USERNAME
+      value: k8sExercice
+    - name: MONGO_INITDB_ROOT_PASSWORD
+      value: k8sExercice
+    ports:
+    - containerPort: 27017
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo
+  namespace: secret-demo
+spec:
+  selector: {app: mongo}
+  ports:
+  - port: 27017
+    targetPort: 27017

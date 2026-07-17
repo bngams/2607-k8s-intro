@@ -1,0 +1,26 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mongo-backup
+  namespace: secret-demo
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: backup
+        image: mongo:7
+        command:
+        - sh
+        - -c
+        - |
+          echo "Backup vers /backup ..."
+          mongodump --uri="$MONGODB_URL" --authenticationDatabase=admin --out=/backup
+          echo "--- contenu du backup ---"
+          ls -R /backup
+        env:
+        - name: MONGODB_URL
+          valueFrom:
+            secretKeyRef:
+              name: mongo
+              key: mongo_url

@@ -1,0 +1,47 @@
+# MongoDB avec volume persistant - squelette a completer
+# On passe du Pod (lab 05) a un Deployment, et on monte le PVC mongo-data sur /data/db
+# (/data/db est le repertoire ou mongod stocke ses donnees).
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongo
+  namespace: secret-demo
+spec:
+  selector:
+    matchLabels:
+      app: mongo
+  template:
+    metadata:
+      labels:
+        app: mongo
+    spec:
+      containers:
+      - name: mongo
+        image: mongo:7
+        env:
+        - name: MONGO_INITDB_ROOT_USERNAME
+          value: k8sExercice
+        - name: MONGO_INITDB_ROOT_PASSWORD
+          value: k8sExercice
+        ports:
+        - containerPort: 27017
+        volumeMounts:
+        - name: data
+          mountPath: "____________"      # TODO : ou mongod ecrit ses donnees (/data/db)
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: ____________        # TODO : nom du PVC (mongo-data)
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo
+  namespace: secret-demo
+spec:
+  selector:
+    app: mongo
+  ports:
+  - port: 27017
+    targetPort: 27017

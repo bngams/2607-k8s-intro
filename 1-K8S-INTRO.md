@@ -601,4 +601,4 @@ kubectl delete -f 1.whoami/
 
 ---
 
-➡️ **Suite : [02 — Compléments : Isolation réseau, Quotas & LimitRange](2-K8S-INTRO-COMPLEMENTS.md)**
+➡️ **Suite : [02 — Introduction à ArgoCD (GitOps)](2-K8S-INTRO-ARGO.md)**

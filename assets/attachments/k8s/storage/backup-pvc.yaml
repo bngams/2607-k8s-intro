@@ -1,0 +1,12 @@
+# PVC pour stocker les backups MongoDB (fourni - meme structure que mongo-pvc)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongo-backups
+  namespace: secret-demo
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

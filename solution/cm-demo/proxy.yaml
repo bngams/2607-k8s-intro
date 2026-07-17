@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: proxy
+  namespace: cm-demo
+  labels: {app: proxy}
+spec:
+  containers:
+  - name: proxy
+    image: nginx:1.27-alpine
+    volumeMounts:
+    - name: config
+      mountPath: "/etc/nginx/"
+  volumes:
+  - name: config
+    configMap:
+      name: proxy-config

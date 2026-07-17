@@ -1,0 +1,27 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mongo-backup
+  namespace: secret-demo
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: backup
+        image: mongo:7
+        command:
+        - sh
+        - -c
+        - |
+          TS=$(date +%Y%m%d-%H%M%S)
+          echo "Backup vers /backup/$TS ..."
+          mongodump --uri="mongodb://k8sExercice:k8sExercice@mongo:27017/message?authSource=admin" --out=/backup/$TS
+          echo "--- contenu du PVC /backup ---"
+          ls -R /backup
+        volumeMounts:
+        - name: backups
+          mountPath: /backup
+      volumes:
+      - name: backups
+        persistentVolumeClaim: {claimName: mongo-backups}

@@ -6,6 +6,7 @@ secrets/
 *.pem
 kubeconfig
 argocd-*.secret
+mongo_url            # généré par le lab 05 (--from-file), contient des credentials
 
 # Tokens
 *token*

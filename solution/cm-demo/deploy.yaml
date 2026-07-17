@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: www
+  namespace: cm-demo
+spec:
+  selector:
+    matchLabels: {app: www}
+  template:
+    metadata:
+      labels: {app: www}
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.27-alpine
+        volumeMounts:
+        - name: config
+          mountPath: "/etc/nginx/"
+        env:
+        - name: CONFIG_HASH
+          value: ${CONFIG_HASH}
+      volumes:
+      - name: config
+        configMap: {name: www-config}

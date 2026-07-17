@@ -1,0 +1,18 @@
+# PersistentVolumeClaim pour les donnees de MongoDB - squelette a completer
+# Doc : https://kubernetes.io/docs/concepts/storage/persistent-volumes/
+#
+# Un PVC est une DEMANDE de stockage. La StorageClass par defaut (minikube: "standard")
+# provisionne dynamiquement un PersistentVolume (PV) pour la satisfaire.
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongo-data
+  namespace: secret-demo
+spec:
+  accessModes:
+  - ____________          # TODO : mode d'acces (indice: ReadWriteOnce = monte par 1 noeud)
+  resources:
+    requests:
+      storage: ____________   # TODO : taille demandee (ex: 1Gi)
+  # storageClassName: standard   # optionnel : sinon la StorageClass par defaut est utilisee

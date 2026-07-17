@@ -1,0 +1,21 @@
+# Reverse-proxy nginx configure par une ConfigMap - squelette a completer
+# Doc : https://kubernetes.io/docs/concepts/configuration/configmap/#using-configmaps-as-files-from-a-pod
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: proxy
+  namespace: cm-demo
+  labels:
+    app: proxy
+spec:
+  containers:
+  - name: proxy
+    image: nginx:1.27-alpine
+    volumeMounts:
+    - name: config
+      mountPath: "____________"     # TODO : ou monter la conf nginx ? (indice: /etc/nginx/)
+  volumes:
+  - name: config
+    configMap:
+      name: ____________           # TODO : nom de la ConfigMap creee (proxy-config)
