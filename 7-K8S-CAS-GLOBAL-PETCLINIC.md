@@ -180,8 +180,8 @@ kubectl apply -f app/app.configmap.yml
 
 C'est le cœur de l'assemblage. L'image et la **commande de lancement** sont fournies (spécifiques à Spring Boot — ne les modifiez pas) ; à vous de **brancher le Secret** (env) et **monter la ConfigMap** (volume).
 
-> ⚠️ **Les deux pièges de ce conteneur** (vos notes de départ) :
-> - **L'image** : `techiescamp/kube-petclinic-app:3.0.0`.
+> ⚠️ **Les deux particularités de ce conteneur** :
+> - **L'image** : On utilise une image déjà existante et préparée pour nous `techiescamp/kube-petclinic-app:3.0.0`.
 > - **La commande** : elle indique à Spring où lire la config (le fichier monté par la ConfigMap) et active le profil `mysql`. Elle est fournie telle quelle :
 >   ```
 >   command: ["java", "-jar", "/app/java.jar",
